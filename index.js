@@ -1,6 +1,7 @@
 import express from 'express'
 import dotenv from 'dotenv'
 dotenv.config()
+import cors from 'cors'
 
 // Import database configuration AFTER dotenv.config()
 import { pool } from './config/db.js'
@@ -11,7 +12,9 @@ const PORT = process.env.PORT || 3000
 
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
-// console.log('DATABASE_URL' , process.env.DATABASE_URL);
+app.use(cors({
+    
+}))
 
 // Test connection
 pool.connect() 
