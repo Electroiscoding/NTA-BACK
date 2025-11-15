@@ -1,67 +1,68 @@
 import { pool } from "../config/db.js";
 import bcrypt from "bcrypt";
 import jwt from 'jsonwebtoken'
+
 export const signUp = async (req, res) => {
     try {
-        const { email, password, phone_number, name } = req.body;
+        const { full_name, email, username, password } = req.body;
 
-        if (!email || !password || !name) {
-            return res.status(400).json({ message: "Name, email, and password are required" });
+        // Validate required fields
+        if (!full_name || !email || !username || !password ) {
+            return res.status(400).json({ 
+                message: "Full name, email, username, and password are required" 
+            });
         }
-        //check is phone number already exist 
-        if (phone_number) {
-    const existingPhone = await pool.query(
-        "SELECT * FROM users WHERE phone_number = $1",
-        [phone_number]
-    );
 
-    if (existingPhone.rows.length > 0) {
-        return res.status(400).json({ message: "Phone number already registered" });
-    }
-}
-
-        // Check if user already exists
-        const existingUser = await pool.query(
+        // Check if email already exists
+        const existingEmail = await pool.query(
             "SELECT * FROM users WHERE email = $1",
             [email]
         );
 
-        if (existingUser.rows.length > 0) {
+        if (existingEmail.rows.length > 0) {
             return res.status(400).json({ message: "Email already registered" });
         }
 
-        // Hash the password
+        // Check if username already exists
+        const existingUsername = await pool.query(
+            "SELECT * FROM users WHERE username = $1",
+            [username]
+        );
+
+        if (existingUsername.rows.length > 0) {
+            return res.status(400).json({ message: "Username already taken" });
+        }
+
+        // Hash password
         const password_hash = await bcrypt.hash(password, 10);
 
-        // Insert user
+        // Insert user (NO PHONE NUMBER ANYMORE)
         const newUser = await pool.query(
-            `INSERT INTO users (email, password_hash, phone_number)
-             VALUES ($1, $2, $3)
-             RETURNING id, email, phone_number`,
-            [email, password_hash, phone_number || null]
+            `INSERT INTO users (full_name, username, email, password_hash)
+             VALUES ($1, $2, $3, $4)
+             RETURNING id, full_name, username, email`,
+            [full_name, username, email, password_hash]
         );
 
         const userId = newUser.rows[0].id;
 
-        // Insert profile with name
+        // Create empty profile
         await pool.query(
-            `INSERT INTO profiles (user_id, name) VALUES ($1, $2)`,
-            [userId, name]
+            `INSERT INTO profiles (user_id) VALUES ($1)`,
+            [userId]
         );
 
+        // Generate JWT
         const token = jwt.sign(
-            {userId , email},
+            { userId, email },
             process.env.JWT_SECRET,
-            { expiresIn:'1h' }
-        )
+            { expiresIn: "1h" }
+        );
 
         res.status(201).json({
             message: "Signup successful",
-            user: {
-                ...newUser.rows[0],
-                name
-            },
-            token
+            user: newUser.rows[0],
+            token,
         });
 
     } catch (error) {
@@ -103,19 +104,22 @@ export const login = async (req, res) => {
             { expiresIn: '1h' }
         );
 
-        // Get profile info (optional)
+        // Get profile info
         const profileResult = await pool.query(
-            "SELECT name, username, tagline, avatar_url FROM profiles WHERE user_id = $1",
+            "SELECT tagline, bio, avatar_url, onboarding_complete FROM profiles WHERE user_id = $1",
             [user.id]
         );
+
+        const profile = profileResult.rows[0] || {};
 
         res.status(200).json({
             message: "Login successful",
             user: {
                 id: user.id,
+                full_name: user.full_name,
+                username: user.username,
                 email: user.email,
-                phone_number: user.phone_number,
-                ...profileResult.rows[0]
+                ...profile
             },
             token
         });
